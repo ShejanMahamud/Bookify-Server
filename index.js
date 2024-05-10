@@ -34,26 +34,62 @@ const client = new MongoClient(mongoURI, {
   },
 });
 
+//custom  middlewares
+const verifyToken = (req,res,next) => {
+  const token = req.cookies?.token;
+  console.log(token);
+  next()
+}
+
 const run = async () => {
   try {
     // await client.connect();
     const usersCollection = client.db('bookify').collection('users');
 
+    //get user from db
+    app.get('/users',verifyToken,async(req,res)=>{
+      const result = await usersCollection.find().toArray();
+      res.send(result)
+    })
+    //set user to db
     app.post('/users',async(req,res)=>{
       const user = req.body;
+      const query = {email: user?.email}
+      const isExist = await usersCollection.findOne(query);
+      if(isExist){
+        return res.status(401).send('Forbidden Access!')
+      }
       const result = await usersCollection.insertOne(user)
       res.send(result)
     })
 
-    app.get('/users',async(req,res)=>{
-      const result = await usersCollection.find().toArray();
-      res.send(result)
+    //clear cookie when logout
+    app.get('/logout',async(req,res)=>{
+      res.clearCookie('token',{
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+        maxAge: 0,
+      }).send({success:true})
     })
 
-    // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
+    //auth with jwt
+    app.post('/jwt',async(req,res)=>{
+      const user = req.body;
+      const token = jwt.sign(user,secret_token,{
+        expiresIn: '24h'
+      })
+      res.cookie('token',token,{
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      }).send({success: true})
+    })
+
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
   }
 };
