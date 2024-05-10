@@ -12,16 +12,16 @@ const secret_token = process.env.ACCESS_TOKEN_SECRET;
 const app = express();
 
 //middlewares
-const corsOptions = {
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'https://bookify-library.netlify.app',
-  ],
-  credentials: true,
-  optionSuccessStatus: 200,
-}
-app.use(cors(corsOptions))
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://bookify-library.netlify.app",
+      "https://bookify-library-client.firebaseapp.com",
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -37,54 +37,93 @@ const client = new MongoClient(mongoURI, {
 //custom  middlewares
 const verifyToken = (req,res,next) => {
   const token = req.cookies?.token;
-  console.log(token);
-  next()
+  if(!token){
+   return res.status(401).send({message: 'Forbidden Access!'})
+  }
+  jwt.verify(token,secret_token,(error,decoded)=>{
+    if(error){
+      return res.status(401).send({message: 'Forbidden Access!'})
+    }
+    req.user = decoded;
+    next()
+  })
 }
+
+//cookies options
+const cookieOptions = {
+  httpOnly: false,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
 
 const run = async () => {
   try {
     // await client.connect();
-    const usersCollection = client.db('bookify').collection('users');
-
+    const usersCollection = client.db("bookify").collection("users");
+    const booksCollection = client.db("bookify").collection("books")
     //get user from db
-    app.get('/users',verifyToken,async(req,res)=>{
+    app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
-      res.send(result)
-    })
-    //set user to db
-    app.post('/users',async(req,res)=>{
-      const user = req.body;
-      const query = {email: user?.email}
-      const isExist = await usersCollection.findOne(query);
-      if(isExist){
-        return res.status(401).send('Forbidden Access!')
-      }
-      const result = await usersCollection.insertOne(user)
+      res.send(result);
+    });
+
+    //get a single user
+    app.get('/user/:email',async(req,res)=>{
+      const email = req.params.email;
+      const query = {email: email};
+      const result = await usersCollection.findOne(query);
       res.send(result)
     })
 
-    //clear cookie when logout
-    app.get('/logout',async(req,res)=>{
-      res.clearCookie('token',{
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-        maxAge: 0,
-      }).send({success:true})
-    })
+    //set a book to db
+    app.post('/books', verifyToken, async (req, res) => {
+      const book = req.body;
+      const role = req.user.role;
+    
+      if (role !== 'librarian') {
+        res.send({ success: false});
+        return;
+      }
+    
+      try {
+        const result = await booksCollection.insertOne(book);
+        res.send(result);
+      } catch (error) {
+        console.error("Error adding book:", error);
+        res.status(500).send({ success: false, message: "An error occurred while adding the book." });
+      }
+    });
+    
+
+    //set user to db
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const query = { email: user?.email };
+      const isExist = await usersCollection.findOne(query);
+      if (isExist) {
+        return res.status(401).send("Forbidden Access!");
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
+    //clearing Token
+    app.post("/logout", async (req, res) => {
+      const user = req.body;
+      console.log("logging out", user);
+      res
+        .clearCookie("token", { ...cookieOptions, maxAge: 0 })
+        .send({ success: true });
+    });
 
     //auth with jwt
-    app.post('/jwt',async(req,res)=>{
+    app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user,secret_token,{
-        expiresIn: '24h'
-      })
-      res.cookie('token',token,{
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-      }).send({success: true})
-    })
+      const token = jwt.sign(user, secret_token, {
+        expiresIn: "24h",
+      });
+      res.cookie("token", token, cookieOptions).send({ success: true });
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
