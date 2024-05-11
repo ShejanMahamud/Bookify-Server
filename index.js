@@ -75,6 +75,14 @@ const run = async () => {
       res.send(result)
     })
 
+    //get a single book
+    app.get('/book/:id',async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id : new ObjectId(id)}
+      const result = await booksCollection.findOne(query);
+      res.send(result)
+    })
+
     //set a book to db
     app.post('/books', verifyToken, async (req, res) => {
       const book = req.body;
@@ -122,6 +130,28 @@ const run = async () => {
       });
       res.cookie("token", token, cookieOptions).send({ success: true });
     });
+
+    //update a book
+    app.patch('/book/:id',verifyToken,async(req,res)=>{
+      const role = req?.user?.role;
+      if (role !== 'librarian') {
+        return res.send({ access: false});
+      }
+      const id = req.params.id;
+      const book = req.body;
+      const query = {_id: new ObjectId(id)}
+      const updatedBook = {
+        $set: {
+          book_name: book?.book_name,
+          book_author: book?.book_author,
+          book_category: book?.book_category,
+          book_photo: book?.book_photo,
+          book_rating: book?.book_rating
+        }
+      }
+      const result = await booksCollection.updateOne(query,updatedBook);
+      res.send({ access: true,res: result})
+    })
 
     await client.db("admin").command({ ping: 1 });
     console.log(
