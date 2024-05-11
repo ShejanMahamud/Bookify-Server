@@ -61,6 +61,7 @@ const run = async () => {
     // await client.connect();
     const usersCollection = client.db("bookify").collection("users");
     const booksCollection = client.db("bookify").collection("books")
+    const borrowedBooksCollection = client.db("bookify").collection("borrowed_books")
     //get user from db
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -80,6 +81,19 @@ const run = async () => {
       const id = req.params.id;
       const query = {_id : new ObjectId(id)}
       const result = await booksCollection.findOne(query);
+      res.send(result)
+    })
+
+    app.get('/books',async(req,res)=>{
+      const result = await booksCollection.find().toArray();
+      res.send(result)
+    })
+
+    //categories based books
+    app.get('/books_category/:category',async(req,res)=>{
+      const category = req.params.category;
+      const query = {book_category: category};
+      const result = await booksCollection.find(query).toArray();
       res.send(result)
     })
 
@@ -130,6 +144,26 @@ const run = async () => {
       });
       res.cookie("token", token, cookieOptions).send({ success: true });
     });
+
+    //set borrowed book to db
+    app.post('/borrowed_books/:id',async(req,res)=>{
+      const borrowedBooks = req.body;
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const book = await booksCollection.findOne(query);
+      const currentQuantity = parseInt(book?.book_quantity);
+      if(currentQuantity <= 0){
+        return res.send({success: false})
+      }
+      const updateQuantity = {
+        $inc:{
+          book_quantity: -1
+        }
+      }
+      const updateBook = await booksCollection.findOneAndUpdate(query,updateQuantity);
+      const result = await borrowedBooksCollection.insertOne(borrowedBooks);
+      res.send({success: true, res:result})
+    })
 
     //update a book
     app.patch('/book/:id',verifyToken,async(req,res)=>{
