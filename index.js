@@ -79,17 +79,15 @@ const run = async () => {
     app.post('/books', verifyToken, async (req, res) => {
       const book = req.body;
       const role = req.user.role;
-    
       if (role !== 'librarian') {
-        res.send({ success: false});
+        res.send({ access: false});
         return;
       }
     
       try {
         const result = await booksCollection.insertOne(book);
-        res.send(result);
+        res.send({access: true,res: result});
       } catch (error) {
-        console.error("Error adding book:", error);
         res.status(500).send({ success: false, message: "An error occurred while adding the book." });
       }
     });
