@@ -35,19 +35,19 @@ const client = new MongoClient(mongoURI, {
 });
 
 //custom  middlewares
-const verifyToken = (req,res,next) => {
+const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
-  if(!token){
-   return res.status(401).send({message: 'Forbidden Access!'})
+  if (!token) {
+    return res.status(401).send({ message: "Forbidden Access!" });
   }
-  jwt.verify(token,secret_token,(error,decoded)=>{
-    if(error){
-      return res.status(401).send({message: 'Forbidden Access!'})
+  jwt.verify(token, secret_token, (error, decoded) => {
+    if (error) {
+      return res.status(401).send({ message: "Forbidden Access!" });
     }
     req.user = decoded;
-    next()
-  })
-}
+    next();
+  });
+};
 
 //cookies options
 const cookieOptions = {
@@ -60,8 +60,10 @@ const run = async () => {
   try {
     // await client.connect();
     const usersCollection = client.db("bookify").collection("users");
-    const booksCollection = client.db("bookify").collection("books")
-    const borrowedBooksCollection = client.db("bookify").collection("borrowed_books")
+    const booksCollection = client.db("bookify").collection("books");
+    const borrowedBooksCollection = client
+      .db("bookify")
+      .collection("borrowed_books");
     //get user from db
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -69,51 +71,79 @@ const run = async () => {
     });
 
     //get a single user
-    app.get('/user/:email',async(req,res)=>{
+    app.get("/user/:email", async (req, res) => {
       const email = req.params.email;
-      const query = {email: email};
+      const query = { email: email };
       const result = await usersCollection.findOne(query);
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     //get a single book
-    app.get('/book/:id',async(req,res)=>{
+    app.get("/book/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id : new ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const result = await booksCollection.findOne(query);
-      res.send(result)
-    })
+      res.send(result);
+    });
 
-    app.get('/books',async(req,res)=>{
+    app.get("/books", async (req, res) => {
       const result = await booksCollection.find().toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     //categories based books
-    app.get('/books_category/:category',async(req,res)=>{
+    app.get("/books_category/:category", async (req, res) => {
       const category = req.params.category;
-      const query = {book_category: category};
+      const query = { book_category: category };
       const result = await booksCollection.find(query).toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
+
+    //get borrowed book from db
+    app.get("/borrowed_books/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (req?.user?.email !== email) {
+        return res.status(401).send({ message: "Forbidden" });
+      }
+      const query = { user_email: email };
+      const result = await borrowedBooksCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    //get books count based on user email
+    app.get("/books_count/:email", async (req, res) => {
+      const email = req.params.email;
+      const filter = { author_email: email };
+      const result = await booksCollection.countDocuments(filter);
+      res.send({ books_count: result });
+    });
+
+    //get all available books
+    app.get("/available_books", async (req, res) => {
+      const filter = { book_quantity: { $gt: 0 } };
+      const result = await booksCollection.find(filter).toArray();
+      res.send(result);
+    });
 
     //set a book to db
-    app.post('/books', verifyToken, async (req, res) => {
+    app.post("/books", verifyToken, async (req, res) => {
       const book = req.body;
       const role = req.user.role;
-      if (role !== 'librarian') {
-        res.send({ access: false});
+      if (role !== "librarian") {
+        res.send({ access: false });
         return;
       }
-    
+
       try {
         const result = await booksCollection.insertOne(book);
-        res.send({access: true,res: result});
+        res.send({ access: true, res: result });
       } catch (error) {
-        res.status(500).send({ success: false, message: "An error occurred while adding the book." });
+        res.status(500).send({
+          success: false,
+          message: "An error occurred while adding the book.",
+        });
       }
     });
-    
 
     //set user to db
     app.post("/users", async (req, res) => {
@@ -146,46 +176,65 @@ const run = async () => {
     });
 
     //set borrowed book to db
-    app.post('/borrowed_books/:id',async(req,res)=>{
+    app.post("/borrowed_book/:name", async (req, res) => {
       const borrowedBooks = req.body;
-      const id = req.params.id;
-      const query = {_id: new ObjectId(id)}
-      const book = await booksCollection.findOne(query);
-      const currentQuantity = parseInt(book?.book_quantity);
-      if(currentQuantity <= 0){
-        return res.send({success: false})
+      const name = req.params.name;
+      const query = { book_name: name };
+      const isExist = await borrowedBooksCollection.findOne(query);
+      if (isExist) {
+        return res.send({ success: false });
       }
       const updateQuantity = {
-        $inc:{
-          book_quantity: -1
-        }
-      }
-      const updateBook = await booksCollection.findOneAndUpdate(query,updateQuantity);
+        $inc: {
+          book_quantity: -1,
+        },
+      };
+      const updateBook = await booksCollection.findOneAndUpdate(
+        query,
+        updateQuantity
+      );
       const result = await borrowedBooksCollection.insertOne(borrowedBooks);
-      res.send({success: true, res:result})
-    })
+      res.send({ success: true, res: result });
+    });
 
     //update a book
-    app.patch('/book/:id',verifyToken,async(req,res)=>{
+    app.patch("/book/:id", verifyToken, async (req, res) => {
       const role = req?.user?.role;
-      if (role !== 'librarian') {
-        return res.send({ access: false});
+      if (role !== "librarian") {
+        return res.send({ access: false });
       }
       const id = req.params.id;
       const book = req.body;
-      const query = {_id: new ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const updatedBook = {
         $set: {
           book_name: book?.book_name,
           book_author: book?.book_author,
           book_category: book?.book_category,
           book_photo: book?.book_photo,
-          book_rating: book?.book_rating
-        }
-      }
-      const result = await booksCollection.updateOne(query,updatedBook);
-      res.send({ access: true,res: result})
-    })
+          book_rating: book?.book_rating,
+        },
+      };
+      const result = await booksCollection.updateOne(query, updatedBook);
+      res.send({ access: true, res: result });
+    });
+
+    //delete a book from borrowed book
+    app.delete("/borrowed_book/:id/:name", async (req, res) => {
+      const id = req.params.id;
+      const name = req.params.name;
+      //update that book stock
+      const query = { book_name: name };
+      const updateStock = {
+        $inc: {
+          book_quantity: 1,
+        },
+      };
+      await booksCollection.findOneAndUpdate(query, updateStock);
+      const filter = { _id: new ObjectId(id) };
+      const result = await borrowedBooksCollection.deleteOne(filter);
+      res.send(result);
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
