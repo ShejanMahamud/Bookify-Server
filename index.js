@@ -61,9 +61,13 @@ const run = async () => {
     // await client.connect();
     const usersCollection = client.db("bookify").collection("users");
     const booksCollection = client.db("bookify").collection("books");
+    const writersCollection = client.db("bookify").collection("writers");
     const borrowedBooksCollection = client
       .db("bookify")
       .collection("borrowed_books");
+      const newsCollection = client
+      .db("bookify")
+      .collection("news");
     //get user from db
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -110,20 +114,23 @@ const run = async () => {
       res.send(result);
     });
 
-    //get books count based on user email
-    app.get("/books_count/:email", async (req, res) => {
-      const email = req.params.email;
-      const filter = { author_email: email };
-      const result = await booksCollection.countDocuments(filter);
-      res.send({ books_count: result });
-    });
-
     //get all available books
     app.get("/available_books", async (req, res) => {
       const filter = { book_quantity: { $gt: 0 } };
       const result = await booksCollection.find(filter).toArray();
       res.send(result);
     });
+
+    //get news
+    app.get('/news',async(req,res)=>{
+      const result = await newsCollection.find().toArray();
+      res.send(result)
+    })
+
+    app.get('/writers',async(req,res)=>{
+      const result = await writersCollection.find().toArray();
+      res.send(result);
+    })
 
     //set a book to db
     app.post("/books", verifyToken, async (req, res) => {
@@ -176,10 +183,12 @@ const run = async () => {
     });
 
     //set borrowed book to db
-    app.post("/borrowed_book/:name", async (req, res) => {
+    app.post("/borrowed_book/:name/:email", async (req, res) => {
       const borrowedBooks = req.body;
       const name = req.params.name;
-      const query = { book_name: name };
+      const email = req.params.email
+      const query = { book_name: name,user_email: email };
+      const filter = { book_name: name }
       const isExist = await borrowedBooksCollection.findOne(query);
       if (isExist) {
         return res.send({ success: false });
@@ -189,8 +198,8 @@ const run = async () => {
           book_quantity: -1,
         },
       };
-      const updateBook = await booksCollection.findOneAndUpdate(
-        query,
+       await booksCollection.findOneAndUpdate(
+        filter,
         updateQuantity
       );
       const result = await borrowedBooksCollection.insertOne(borrowedBooks);
@@ -218,6 +227,15 @@ const run = async () => {
       const result = await booksCollection.updateOne(query, updatedBook);
       res.send({ access: true, res: result });
     });
+
+    //check role of user
+    app.get('/user_role',verifyToken,(req,res)=>{
+      const role = req?.user?.role;
+      if (role !== "librarian") {
+        return res.send({ access: false });
+      }
+      res.send({ access: true })
+    })
 
     //delete a book from borrowed book
     app.delete("/borrowed_book/:id/:name", async (req, res) => {
