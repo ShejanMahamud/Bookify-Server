@@ -38,10 +38,13 @@ const client = new MongoClient(mongoURI, {
 const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
   if (!token) {
+    // console.log('token nei')
     return res.status(401).send({ message: "Forbidden Access!" });
+    
   }
   jwt.verify(token, secret_token, (error, decoded) => {
     if (error) {
+    // console.log('token nosto')
       return res.status(401).send({ message: "Forbidden Access!" });
     }
     req.user = decoded;
@@ -51,7 +54,7 @@ const verifyToken = (req, res, next) => {
 
 //cookies options
 const cookieOptions = {
-  httpOnly: false,
+  httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
 };
@@ -92,17 +95,24 @@ const run = async () => {
     });
 
     app.get("/books",verifyToken, async (req, res) => {
-      const result = await booksCollection.find().toArray();
+      let query = {};
+      if(req.query.writer){
+        query = {book_author: req.query.writer}
+      }
+      if(req.query.category){
+        query = {book_category: req.query.category}
+      }
+      const result = await booksCollection.find(query).toArray();
       res.send(result);
     });
 
     //categories based books
-    app.get("/books_category/:category", async (req, res) => {
-      const category = req.params.category;
-      const query = { book_category: category };
-      const result = await booksCollection.find(query).toArray();
-      res.send(result);
-    });
+    // app.get("/books_category/:category", async (req, res) => {
+    //   const category = req.params.category;
+    //   const query = { book_category: category };
+    //   const result = await booksCollection.find(query).toArray();
+    //   res.send(result);
+    // });
 
     //get borrowed book from db
     app.get("/borrowed_books/:email", verifyToken, async (req, res) => {
@@ -270,10 +280,10 @@ const run = async () => {
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
   }
 };
