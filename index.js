@@ -62,6 +62,7 @@ const run = async () => {
     const usersCollection = client.db("bookify").collection("users");
     const booksCollection = client.db("bookify").collection("books");
     const writersCollection = client.db("bookify").collection("writers");
+    const featuredCollection = client.db("bookify").collection("featured");
     const borrowedBooksCollection = client
       .db("bookify")
       .collection("borrowed_books");
@@ -90,7 +91,7 @@ const run = async () => {
       res.send(result);
     });
 
-    app.get("/books", async (req, res) => {
+    app.get("/books",verifyToken, async (req, res) => {
       const result = await booksCollection.find().toArray();
       res.send(result);
     });
@@ -113,6 +114,12 @@ const run = async () => {
       const result = await borrowedBooksCollection.find(query).toArray();
       res.send(result);
     });
+
+    //get all featured books
+    app.get('/featured_books',async(req,res)=>{
+      const result = await featuredCollection.find().toArray();
+      res.send(result)
+    })
 
     //get all available books
     app.get("/available_books", async (req, res) => {
@@ -189,10 +196,19 @@ const run = async () => {
       const email = req.params.email
       const query = { book_name: name,user_email: email };
       const filter = { book_name: name }
+      //check if book exist of not
       const isExist = await borrowedBooksCollection.findOne(query);
       if (isExist) {
-        return res.send({ success: false });
+        res.send({ message: 'Already Borrowed This Book!' });
+        return
       }
+      //check if user borrowed bok more than 3
+      const search = {user_email: email};
+      const checkLimit = await borrowedBooksCollection.find(search).toArray();
+      if(checkLimit.length >= 3){
+        return res.send({ message: 'Only 3 Book Can Borrowed!' });
+      }
+      //update quantity
       const updateQuantity = {
         $inc: {
           book_quantity: -1,
@@ -203,7 +219,7 @@ const run = async () => {
         updateQuantity
       );
       const result = await borrowedBooksCollection.insertOne(borrowedBooks);
-      res.send({ success: true, res: result });
+      res.send({ message: 'Successfully Added Book!' });
     });
 
     //update a book
@@ -261,7 +277,6 @@ const run = async () => {
   } finally {
   }
 };
-
 run().catch((error) => console.log);
 
 app.get("/", (req, res) => {
