@@ -102,6 +102,9 @@ const run = async () => {
       if(req.query.category){
         query = {book_category: req.query.category}
       }
+      if(req.query.search){
+        query = {book_name: {$regex:req.query.search || '', $options: "i"}}
+      }
       const result = await booksCollection.find(query).toArray();
       res.send(result);
     });
