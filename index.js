@@ -40,11 +40,10 @@ const verifyToken = (req, res, next) => {
   if (!token) {
     // console.log('token nei')
     return res.status(401).send({ message: "Forbidden Access!" });
-    
   }
   jwt.verify(token, secret_token, (error, decoded) => {
     if (error) {
-    // console.log('token nosto')
+      // console.log('token nosto')
       return res.status(401).send({ message: "Forbidden Access!" });
     }
     req.user = decoded;
@@ -69,9 +68,7 @@ const run = async () => {
     const borrowedBooksCollection = client
       .db("bookify")
       .collection("borrowed_books");
-      const newsCollection = client
-      .db("bookify")
-      .collection("news");
+    const newsCollection = client.db("bookify").collection("news");
     //get user from db
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -94,16 +91,18 @@ const run = async () => {
       res.send(result);
     });
 
-    app.get("/books",verifyToken, async (req, res) => {
+    app.get("/books", verifyToken, async (req, res) => {
       let query = {};
-      if(req.query.writer){
-        query = {book_author: req.query.writer}
+      if (req.query.writer) {
+        query = { book_author: req.query.writer };
       }
-      if(req.query.category){
-        query = {book_category: req.query.category}
+      if (req.query.category) {
+        query = { book_category: req.query.category };
       }
-      if(req.query.search){
-        query = {book_name: {$regex:req.query.search || '', $options: "i"}}
+      if (req.query.search) {
+        query = {
+          book_name: { $regex: req.query.search || "", $options: "i" },
+        };
       }
       const result = await booksCollection.find(query).toArray();
       res.send(result);
@@ -129,10 +128,10 @@ const run = async () => {
     });
 
     //get all featured books
-    app.get('/featured_books',async(req,res)=>{
+    app.get("/featured_books", async (req, res) => {
       const result = await featuredCollection.find().toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     //get all available books
     app.get("/available_books", async (req, res) => {
@@ -142,26 +141,34 @@ const run = async () => {
     });
 
     //get news
-    app.get('/news',async(req,res)=>{
+    app.get("/news", async (req, res) => {
       const result = await newsCollection.find().toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
 
-    app.get('/writers',async(req,res)=>{
+    app.get("/writers", async (req, res) => {
       const result = await writersCollection.find().toArray();
       res.send(result);
-    })
+    });
 
     //set a book to db
     app.post("/books", verifyToken, async (req, res) => {
       const book = req.body;
       const role = req.user.role;
+      const options = { upsert: true };
       if (role !== "librarian") {
         res.send({ access: false });
         return;
       }
-
       try {
+        await writersCollection.findOneAndUpdate(
+          { writer_name: book?.author_name },
+          {
+            $set: {writer_photo: book?.author_photo,writer_name: book?.book_author},
+            $inc: { writer_book_count: 1 },
+          },
+          options
+        );
         const result = await booksCollection.insertOne(book);
         res.send({ access: true, res: result });
       } catch (error) {
@@ -206,20 +213,20 @@ const run = async () => {
     app.post("/borrowed_book/:name/:email", async (req, res) => {
       const borrowedBooks = req.body;
       const name = req.params.name;
-      const email = req.params.email
-      const query = { book_name: name,user_email: email };
-      const filter = { book_name: name }
+      const email = req.params.email;
+      const query = { book_name: name, user_email: email };
+      const filter = { book_name: name };
       //check if book exist of not
       const isExist = await borrowedBooksCollection.findOne(query);
       if (isExist) {
-        res.send({ message: 'Already Borrowed This Book!' });
-        return
+        res.send({ message: "Already Borrowed This Book!" });
+        return;
       }
       //check if user borrowed bok more than 3
-      const search = {user_email: email};
+      const search = { user_email: email };
       const checkLimit = await borrowedBooksCollection.find(search).toArray();
-      if(checkLimit.length >= 3){
-        return res.send({ message: 'Only 3 Book Can Borrowed!' });
+      if (checkLimit.length >= 3) {
+        return res.send({ message: "Only 3 Book Can Borrowed!" });
       }
       //update quantity
       const updateQuantity = {
@@ -227,12 +234,9 @@ const run = async () => {
           book_quantity: -1,
         },
       };
-       await booksCollection.findOneAndUpdate(
-        filter,
-        updateQuantity
-      );
+      await booksCollection.findOneAndUpdate(filter, updateQuantity);
       const result = await borrowedBooksCollection.insertOne(borrowedBooks);
-      res.send({ message: 'Successfully Added Book!' });
+      res.send({ message: "Successfully Added Book!" });
     });
 
     //update a book
@@ -258,13 +262,13 @@ const run = async () => {
     });
 
     //check role of user
-    app.get('/user_role',verifyToken,(req,res)=>{
+    app.get("/user_role", verifyToken, (req, res) => {
       const role = req?.user?.role;
       if (role !== "librarian") {
         return res.send({ access: false });
       }
-      res.send({ access: true })
-    })
+      res.send({ access: true });
+    });
 
     //delete a book from borrowed book
     app.delete("/borrowed_book/:id/:name", async (req, res) => {
