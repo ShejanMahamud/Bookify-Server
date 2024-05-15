@@ -65,6 +65,7 @@ const run = async () => {
     const booksCollection = client.db("bookify").collection("books");
     const writersCollection = client.db("bookify").collection("writers");
     const featuredCollection = client.db("bookify").collection("featured");
+    const reviewsCollection = client.db("bookify").collection("reviews");
     const borrowedBooksCollection = client
       .db("bookify")
       .collection("borrowed_books");
@@ -108,13 +109,15 @@ const run = async () => {
       res.send(result);
     });
 
-    //categories based books
-    // app.get("/books_category/:category", async (req, res) => {
-    //   const category = req.params.category;
-    //   const query = { book_category: category };
-    //   const result = await booksCollection.find(query).toArray();
-    //   res.send(result);
-    // });
+    //get reviews for a book
+    app.get('/reviews',async(req,res)=>{
+      let query = {}
+      if(req.query.review){
+        query = {bookId: req.query.review}
+      }
+      const result = await reviewsCollection.find(query).toArray();
+      res.send(result)
+    })
 
     //get borrowed book from db
     app.get("/borrowed_books/:email", verifyToken, async (req, res) => {
@@ -147,9 +150,20 @@ const run = async () => {
     });
 
     app.get("/writers", async (req, res) => {
-      const result = await writersCollection.find().toArray();
+      let query = {};
+      if(req.query.name){
+        query = {writer_name: req.query.name}
+      }
+      const result = await writersCollection.find(query).toArray();
       res.send(result);
     });
+
+    //set a review to reviews
+    app.post('/reviews',async(req,res)=>{
+      const review = req.body;
+      const result = await reviewsCollection.insertOne(review)
+      res.send(result)
+    })
 
     //set a book to db
     app.post("/books", verifyToken, async (req, res) => {
