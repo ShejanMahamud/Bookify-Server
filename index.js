@@ -70,11 +70,45 @@ const run = async () => {
       .db("bookify")
       .collection("borrowed_books");
     const newsCollection = client.db("bookify").collection("news");
+
     //get user from db
     app.get("/users", async (req, res) => {
-      const result = await usersCollection.find().toArray();
-      res.send(result);
+      let query = {};
+      if(req.query.email){
+        query = {
+          email: { $ne: req.query.email },
+        }
+      }
+    
+      try {
+        // Fetch users
+        const users = await usersCollection.find(query).toArray();
+    
+        // Extract emails
+        const userEmails = users.map(user => user.email);
+    
+        // Query borrowed books collection
+        const borrowedBooks = await borrowedBooksCollection.find({
+          user_email: { $in: userEmails }
+        }).toArray();
+    
+        // Combine users with their borrowed books
+        const usersWithBorrowedBooks = users.map(user => {
+          const userBooks = borrowedBooks.filter(book => book.user_email === user.email);
+          const bookNames = userBooks.map(book => book.book_name)
+          return {
+            ...user,
+            bookNames
+          };
+        });
+    
+        res.send(usersWithBorrowedBooks);
+      } catch (error) {
+        console.error('Error fetching users or borrowed books:', error);
+        res.status(500).send({ error: 'An error occurred while fetching data' });
+      }
     });
+    
 
     //get a single user
     app.get("/user/:email", async (req, res) => {
@@ -92,22 +126,47 @@ const run = async () => {
       res.send(result);
     });
 
-    app.get("/books", verifyToken, async (req, res) => {
+    app.get("/books", async (req, res) => {
       let query = {};
-      if (req.query.writer) {
-        query = { book_author: req.query.writer };
+      try{
+        const page = parseInt(req.query?.page) - 1;
+        const size = parseInt(req.query?.size);
+        if (req.query.writer) {
+          query = { book_author: req.query.writer };
+        }
+        if (req.query.category) {
+          query = { book_category: req.query.category };
+        }
+        if (req.query.search) {
+          query = {
+            book_name: { $regex: req.query.search || "", $options: "i" },
+          };
+        }
+        if(req.query.available_books){
+          query = { book_quantity: { $gt: 0 } }
+        }
+        const count = await booksCollection.countDocuments();
+        const result = await booksCollection.find(query)
+        .skip(page * size)
+        .limit(size)
+        .toArray();
+        res.send({books: result,count:count});
       }
-      if (req.query.category) {
-        query = { book_category: req.query.category };
+      catch(error){
+        res.send({error: error})
       }
-      if (req.query.search) {
-        query = {
-          book_name: { $regex: req.query.search || "", $options: "i" },
-        };
-      }
-      const result = await booksCollection.find(query).toArray();
-      res.send(result);
     });
+
+
+    //dashboard stats
+    app.get('/stats',async(req,res)=>{
+      const book = await booksCollection.find().toArray();
+      const user = await usersCollection.find().toArray();
+      const borrowedBooks = await borrowedBooksCollection.find().toArray()
+
+      const stats = {bookCount: book.length,user:user.length,borrowedBooksCount: borrowedBooks.length}
+      res.send(stats)
+    })
 
     //get reviews for a book
     app.get('/reviews',async(req,res)=>{
